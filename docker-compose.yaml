@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    #restart: always
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin_pass
+      POSTGRES_DB: grafana_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./data:/data
+      - ./postgres/init:/var/lib/postgresql/data/pgdata
+    deploy:
+      resources:
+        limits:
+          cpus: '2'  # Ограничение CPU (можно менять)
+          memory: 2G  # Ограничение RAM
+    ports:
+      - "5432:5432"
+    networks:
+      - postgres_network
+
+  pgadmin:
+    image: dpage/pgadmin4:9.0
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@pgadmin.com
+      PGADMIN_DEFAULT_PASSWORD: password
+      #PGADMIN_LISTEN_PORT: 5432
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin:/var/lib/pgadmin/data
+    networks:
+      - postgres_network
+    depends_on:
+      - postgres
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    depends_on:
+      - postgres
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - postgres_network
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: grafana_admin
+  
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prom_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    depends_on:
+      - postgres
+    networks:
+      - postgres_network
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter
+    container_name: postgres_exporter
+    hostname: postgres-exporter  # Явно задаем hostname
+    environment:
+      DATA_SOURCE_NAME: "postgresql://admin:admin@postgres:5432/grafana_db?sslmode=disable"
+    volumes:
+      - ./postgres_exporter.yml:/etc/postgres_exporter/postgres_exporter.yml
+    command:
+      - '--config.file=/etc/postgres_exporter/postgres_exporter.yml'
+    ports:
+      - "9187:9187"
+    depends_on:
+      - postgres
+    networks:
+      postgres_network:
+        aliases:
+          - postgres-exporter  # Добавляем DNS-алиас
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node_exporter
+    hostname: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"  # Стандартный порт Node Exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+    networks:
+      postgres_network:  # Та же сеть, что у Prometheus
+        aliases:
+          - node-exporter
+ 
+
+volumes:
+  postgres_data:
+  grafana_data:
+  pgadmin:
+  prom_data:
+
+
+networks:
+  #grafana_network:
+    #driver: bridge
+  postgres_network:
+    driver: bridge
+    name: postgres_network
+

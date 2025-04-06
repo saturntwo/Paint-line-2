@@ -1,0 +1,6 @@
+pg_exporter:
+  disable_default_metrics: false
+  disable_settings_metrics: false
+  auto_discover_databases: true
+  constant_labels:
+    monitor: "postgresql"
