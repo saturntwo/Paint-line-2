@@ -41,4 +41,3 @@
 ```bash
 docker --version
 docker-compose --version
-57iku6nyethbgwvfedw etb4 evrfcsd
